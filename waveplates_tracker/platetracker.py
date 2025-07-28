@@ -133,13 +133,13 @@ class WaveplateTracker:
             print("Did not provide enough values.\n")
 
     def get_plate_message(self):
-        '''Returns results from WaveplateTracker.get_plate_info() as a string message.'''
+        """Returns results from WaveplateTracker.get_plate_info() as a string message."""
         results = self.get_plate_info()
         message = f"You have {results["blue_plates"]} blue plates, {results["green_plates"]} green plates, and {results["time_to_full"]} hours until full.\n"
         return message
 
     def as_dict(self):
-        '''Returns waveplate history data as a dictionary.'''
+        """Returns waveplate history data as a dictionary."""
         return {
             "blue_plates": self.blue_plates,
             "green_plates": self.green_plates,

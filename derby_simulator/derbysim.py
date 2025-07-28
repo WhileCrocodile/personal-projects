@@ -1,10 +1,11 @@
 import random as rand
-import playercubes as cubes
 import time
 from typing import Sequence
+from collections import Counter
 import numpy as np
 import pandas as pd
-from collections import Counter
+from tqdm import tqdm
+import playercubes as cubes
 
 
 class DerbySim:
@@ -33,7 +34,12 @@ class DerbySim:
         self.show_steps = show_steps
         self.action_delay = action_delay
         self.next_round_order = []
+        self.cumulative_steps = dict()
         self.match_setup(self.players, num_squares)
+        
+
+    def get_player_desc(self) -> dict:
+        return {player.name: player.description for player in self.players}
 
     def get_summary(self) -> list[tuple[int, list[cubes.Player]]]:
         """Returns a dense, sorted representation of the current game state.
@@ -168,25 +174,25 @@ class DerbySim:
         return moves
 
     def move_player_to(
-        self, player: cubes.Player, new_pos: int, stack_order: int | None = None
+        self, player: cubes.Player, new_pos: int, stack_position: int | None = None
     ):
         """Removes the player from their current position and places them at their
         new position. If Player.position does not match their current position, this
         method fails."""
         self.track[player.position].remove(player)
-        if stack_order is None:
+        if stack_position is None:
             self.track[new_pos].append(player)
         else:
-            self.track[new_pos].insert(stack_order, player)
+            self.track[new_pos].insert(stack_position, player)
         player.update_pos(new_pos)
 
     def move_forward(
-        self, player: cubes.Player, step_size: int, stack_order: int | None = None
+        self, player: cubes.Player, step_size: int, stack_position: int | None = None
     ):
         """Increments the player position by step_size.
         Does not apply game logic; Instead, see DerbySim.step()."""
         self.move_player_to(
-            player=player, new_pos=player.position + step_size, stack_order=stack_order
+            player=player, new_pos=player.position + step_size, stack_position=stack_position
         )
 
     def post_round(
@@ -206,8 +212,8 @@ class DerbySim:
             next_round_order.extend(results["next_round_order"])
 
         for action in actions:
-            moving_player, step_size, stack_order = action
-            self.move_forward(moving_player, step_size, stack_order)
+            moving_player, step_size, stack_position = action
+            self.move_forward(moving_player, step_size, stack_position)
 
         self.next_round_order = next_round_order
 
@@ -233,7 +239,7 @@ class DerbySim:
         last_step: bool = False,
     ):
         """Queries the player for actions. Updates the game state by one step."""
-        # First, calculate relevant parameters
+        # First, calculate relevant parameters        
         stacked_on, stacked_by = self.get_stacked_players(player)
 
         # Calculate and apply actions
@@ -247,20 +253,12 @@ class DerbySim:
             last_step=last_step,
         )
         for action in actions:
-            moving_player, step_size, stack_order = action
+            moving_player, step_size, stack_position = action
             # print(f"On {player}'s turn, {moving_player} moves {step_size} step(s).")
-            self.move_forward(moving_player, step_size, stack_order)
-
-        if self.show_steps is True:
-            # print(" " * 200 + "\r", end="")
-            # print(str(self) + "\r", end="")
-            moving_players = set(list(zip(*actions))[0])
-            msg = f"It is {player}'s turn. {str(moving_players)[1:-1]} moves"
-            msg += f" {step_size} space." if step_size==1 else f" {step_size} spaces."
-            print(msg)
-            print(self.get_summary_message())
-            print(self.get_summary_visual())
-            time.sleep(self.action_delay)
+            self.move_forward(moving_player, step_size, stack_position)
+            self.cumulative_steps.setdefault(moving_player, 0)
+            self.cumulative_steps[moving_player] += step_size
+        return actions
 
     def one_round(self) -> list[cubes.Player]:
         """Updates the game state to play through one round."""
@@ -273,7 +271,11 @@ class DerbySim:
         self.next_round_order = []
         round_turns = self.roll_turns(round_order)
         if self.show_steps is True:
-            print(f"\nRound order and rolls:\n{round_turns}")
+            msg = "\nRound order and rolls:\n"
+            for p, standard, bonus in round_turns:
+                msg += f"{p}: {standard+bonus}. "
+            print(msg)
+                
 
         for turn in round_turns:
             player, roll, bonus_roll = turn[0], turn[1], turn[2]
@@ -308,22 +310,34 @@ class DerbySim:
                     last_step=True,
                 )
 
-            # Trigger any post-round effects
-            for player in self.players:
-                current_rank = (self.get_ranks()[player], len(self.players))
-                stacked_on, stacked_by = self.get_stacked_players(player)
-                self.post_round(
-                    player, round_order, current_rank, stacked_on, stacked_by
-                )
+            if self.show_steps is True:
+                # If no previous player, do not register a change
+                # Otherwise, print accumulated changes
+                msg = f"It is {player}'s turn. "
+                for p, n_steps in self.cumulative_steps.items():
+                    msg += f"{p} advances {n_steps} step(s). "
+                print(msg)
+                print(self.get_summary_message())
+                self.cumulative_steps = dict()
+                time.sleep(self.action_delay)
 
             # Check for winners
             winners = self.get_winners()
             if len(winners) > 0:
                 # print(f"Winner! {str(winners)[1:-1]}")
                 return winners
+        
+        # Trigger any post-round effects
+        for player in self.players:
+            current_rank = (self.get_ranks()[player], len(self.players))
+            stacked_on, stacked_by = self.get_stacked_players(player)
+            self.post_round(
+                player, round_order, current_rank, stacked_on, stacked_by
+            )
+
         return []
 
-    def one_half(self, first_half=True):
+    def half_game(self, first_half=True):
         """Resets game and plays through rounds until a winner is found.
         Only simulates one half; if first_half=False, sets relative starting
         positions based on the previous game."""
@@ -336,8 +350,8 @@ class DerbySim:
     def full_game(self) -> tuple[list[cubes.Player], list[cubes.Player]]:
         """Plays through a full game with first and second halves, returns
         the winners in the first and second halves."""
-        first_winners = self.one_half(first_half=True)
-        second_winners = self.one_half(first_half=False)
+        first_winners = self.half_game(first_half=True)
+        second_winners = self.half_game(first_half=False)
         return (first_winners, second_winners)
 
     def __repr__(self):
@@ -380,11 +394,11 @@ class DerbySim:
 
 def simulate_batch(
     players, n: int = 100, shuffle_players: bool = True, normalized: bool = True
-) -> dict[str, float]:
+) -> Counter | list:
     """Do many game simulations and tally the results."""
     derby = DerbySim(players=players, shuffle_players=shuffle_players)
     winners = []
-    for _ in range(n):
+    for _ in tqdm(range(n)):
         results = derby.full_game()
         winners.extend(results[0])
         winners.extend(results[1])
@@ -401,32 +415,47 @@ def simulate_batch(
         return winners
 
 
-def main():
-    pass
+def main(which: str):
+    '''Runs a Derby simulation and prints the winners.'''
+    match which:
+        case "batch":
+            winners = simulate_batch(
+                players=(
+                    cubes.CalcharoCube(),
+                    cubes.PhoebeCube(),
+                    cubes.JinhsiCube(),
+                    cubes.BrantCube(),
+                ),
+                n=10000,
+                normalized=True,
+                shuffle_players=True,
+            )
+        case "full":
+            winners = DerbySim(
+                players=(
+                    cubes.CalcharoCube(),
+                    cubes.PhoebeCube(),
+                    cubes.JinhsiCube(),
+                    cubes.BrantCube(),
+                ),
+                shuffle_players=True,
+                show_steps=True,
+            ).full_game()
+        case "half":
+            winners = DerbySim(
+                players=(
+                    cubes.CalcharoCube(),
+                    cubes.PhoebeCube(),
+                    cubes.JinhsiCube(),
+                    cubes.BrantCube(),
+                ),
+                shuffle_players=True,
+                show_steps=True,
+                action_delay=0.5
+            ).half_game(first_half=True)
+
+    print(winners)
 
 
 if __name__ == "__main__":
-    winners = simulate_batch(
-        players=(
-            cubes.BrantCube(),
-            cubes.RocciaCube(),
-            cubes.ZaniCube(),
-            cubes.PhoebeCube(),
-        ),
-        n=10000,
-        normalized=True,
-        shuffle_players=True,
-    )
-
-    # winners = DerbySim(
-    #     players=(
-    #         cubes.BrantCube(),
-    #         cubes.RocciaCube(),
-    #         cubes.ZaniCube(),
-    #         cubes.PhoebeCube(),
-    #     ),
-    #     shuffle_players=True,
-    #     show_steps=True
-    # ).full_game()
-
-    print(winners)
+    main("half")

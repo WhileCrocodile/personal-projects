@@ -3,19 +3,19 @@
 import random as rand
 from typing import Sequence
 
-cube_descriptions = {
-    "Roccia": "If Roccia is the last to move, she advances 2 extra pads",
+CUBE_DESC = {
+    "Roccia": "If Roccia is the last to move, she advances 2 extra pads.",
     "Brant": "If Brant is the first to move, he advances 2 extra pads.",
     "Cantarella": "The first time Cantarella passes by other cubes, she stacks with them and carries them forward. This can only be triggered once per match.",
     "Zani": "The dice will only roll a 1 or 3. When moving with other Cubes stacking above, there is a 40%% chance to advance 2 extra pads next turn.",
-    "Phoebe": "There is a 50%% chance to advance an extra pad",
-    "Cartethiya": "If ranked last after own action, there is a 60% chance to advance 2 extra pads in all remaining turns. This can only be triggered once in each match.",
+    "Phoebe": "There is a 50%% chance to advance an extra pad.",
+    "Cartethiya": "If ranked last after own action, there is a 60%% chance to advance 2 extra pads in all remaining turns. This can only be triggered once in each match.",
     "Camellya": "There is a 50%% chance of triggering this effect on Camellya's turn. For every other cube on the same pad besides Camellya, she advances 1 extra pad, while other Cubes stay in place.",
     "Jinhsi": "If other cubes are stacked on top of Jinhsi, there is a 40%% chance she will move to the top of the stack.",
     "Carlotta": "There is a 28%% chance to advance twice with one rolled number.",
     "Calcharo": "If Calcharo is the last to move, he advances 3 extra pads.",
-    "Changli": "If other cubes are stacked below Changli, there is a 65%% chance she will be the last to move in a turn",
-    "Shorekeeper": "The dice will only roll a 2 or 3",
+    "Changli": "If other cubes are stacked below Changli, there is a 65%% chance she will be the last to move in the next turn.",
+    "Shorekeeper": "The dice will only roll a 2 or 3.",
 }
 
 
@@ -25,6 +25,8 @@ class Player:
     def __init__(self, name: str, description: str = "", position: int = 0):
         self.name = name
         self.description = description
+        if self.description == "" and self.name in CUBE_DESC:
+            self.description = CUBE_DESC[self.name]
         self.position = position
         self.ability_expended = False
         self.ability_active = False
@@ -404,11 +406,11 @@ class ChangliCube(Player):
         stacked_on: Sequence["Player"] = tuple(),
         stacked_by: Sequence["Player"] = tuple(),
     ) -> dict[str, list]:
-        
+
         if len(stacked_on) > 0:
-            self.ability_active = rand.choices((False,True), (0.35,0.65))
+            self.ability_active = rand.choices((False, True), (0.35, 0.65))
         if self.ability_active:
-            return {"actions":[], "next_round_order":[[self, None]]}
+            return {"actions": [], "next_round_order": [[self, None]]}
         else:
             return super().post_round(round_order, current_rank)
 
@@ -419,8 +421,13 @@ class ShorekeeperCube(Player):
     def __init__(self, position: int = 0):
         super().__init__(name="Shorekeeper", position=position)
 
-    def roll(self, round_order: Sequence[Player], stacked_on: Sequence[Player] = tuple(), stacked_by: Sequence[Player] = tuple()) -> tuple[int, int]:
-        return (rand.choice((2,3)), 0)
+    def roll(
+        self,
+        round_order: Sequence[Player],
+        stacked_on: Sequence[Player] = tuple(),
+        stacked_by: Sequence[Player] = tuple(),
+    ) -> tuple[int, int]:
+        return (rand.choice((2, 3)), 0)
 
 
 def main():

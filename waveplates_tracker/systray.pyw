@@ -165,7 +165,7 @@ class WaveplateIcon(pystray.Icon):
 
 
 def main():
-    '''Create and run the system tray icon.'''
+    """Create and run the system tray icon."""
     icon = WaveplateIcon()
     icon.run_detached()
 
